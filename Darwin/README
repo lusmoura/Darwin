@@ -1,0 +1,49 @@
+                                      Darwin
+                             INSTALL AND USAGE GUIDE
+-----------------------------------INSTALL--------------------------------------
+Darwin uses the following libraries:
+    -Numpy
+    -Pandas
+    -Sci Kit Learn
+    -MatPlotLib
+To install these libraries just type the following commands on your terminal
+    sudo apt-get install python3-tk
+    pip3 install numpy
+    pip3 install pandas
+    pip3 install sklearn
+    pip3 install matplotlib
+    or just type
+    pip3 install -r requirements.txt
+-------------------------------------USAGE--------------------------------------
+The Darwin commands are:
+
+>Load [file]: Loads data from [file]
+>print data: prints loaded data
+>plot data: plots data
+>Params: Print the environment parameters
+>Set clusters x: sets the amount of clusters to x
+>Set population x: sets the number of individuals to x
+>Set selection x: Sets selection type to x
+>Set generations x: sets the number of generations to x
+>Set mutation x: sets mutation rate to x
+>init: initializes population
+>evolve: evolves the population
+>plot clusters: Prints data, now clustered
+>std: scales data to achieve zero mean and unit variance (use before loading data)
+>Compare: Plots comparison graph between the different selection methods
+>ignore lines x: skips x lines from the csv
+>ignore columns x: ignores the x last columns
+>quit: quits the program
+
+Remeber, if you don't know what to do, just type help.
+
+Step-by-step guide:
+  1)Set which lines and columns you want to be ignored with the commands ignore lines x and ignore columns x.
+    The columns will be ignored counting from right to the left and the lines will be ignored counting from top to bottom.
+  to ignore certain data such as headers
+  2)Load the csv file with the command Load file.csv, the loaded data will be printed afterwards
+  3)Set the parameters with the set commands, remember you will have to initialize the population every time you change a parameter.
+    You can also see the current parameters with the command params.
+  4)Evolve your population with the command evolve. It will evolve according to the selection method previously set (default selection: roulette).
+  5)Initialize again the population with the command init and compare every selection method with the command compare.
+  6)You can check all graphs plotted in the graphs folder that has been created on the same directory in which Darwin is installed.
