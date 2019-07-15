@@ -4,102 +4,116 @@
 #        David Cairuz da Silva - 10830061 - davidcairuz@gmail.com
 #       João Guilherme Madeira Araújo - 9725165 - joaogui1@usp.br
 #          Luísa Souza Moura - 10692179 - luisamoura@usp.br
-#  Daniel Sá Barretto Prado Garcia - 10374344 - danielbarretto@usp.br
 
 import os
+from tqdm import tqdm
 from os import system
 from copy import deepcopy
 import pandas as pd
 from sklearn import metrics
 from sklearn import preprocessing
 import matplotlib.pyplot as plt
-
 import numpy as np
 
-def mutate(ind, mutation_rate):
+def mutate(individuals, mutation_rate):
     '''Mutates individuals'''
-    ret = np.asarray(deepcopy(ind))
-    ret = ret + np.random.normal(0, mutation_rate, list(ret.shape))
-    return ret
+    mutated_individuals = format_individuals_array(individuals)
+    mutated_individuals = mutated_individuals + get_mutation_value(mutation_rate, list(mutated_individuals.shape))
+    
+    return mutated_individuals
+
+def format_individuals_array(individuals):
+    return np.asarray(deepcopy(individuals))
+
+def get_mutation_value(mutation_rate, size):
+    return np.random.normal(0, mutation_rate, size)
 
 
 def calinskiHarabaz(points, centers):
     '''Calculates fitness function'''
-    ret = 0.0
+    fitness = 0.0
+    label, clusters = clusterize(points, centers)
+
+    if all_centers_are_the_same(label):
+        fitness = 0.001
+    else:
+        fitness = metrics.calinski_harabaz_score(points, label)
+    
+    return fitness
+ 
+def clusterize(points, centers):
     clusters = [[c] for c in centers]
     label = [0 for _ in enumerate(points)]
 
-    for pos, p in enumerate(points):
-        closest = np.argmin([np.linalg.norm(p - c) for c in centers])
-        clusters[closest].append(p)
+    for pos, point in enumerate(points):
+        closest = np.argmin([np.linalg.norm(point - c) for c in centers])
+        clusters[closest].append(point)
         label[pos] = closest
+    
+    return label, clusters
 
+def all_centers_are_the_same(label):
     if len(set(label)) == 1:
-        return 0.001
+        return True
+    else:
+        return False
 
-    ret = metrics.calinski_harabaz_score(points, label)
-    return ret
-
-
-def helper():
-    '''Prints help menu'''
-    print("\033[94m---------Darwin commands---------")
-    print(">Load [file]: Loads data from [file]", ">print data: prints loaded data",\
-     ">plot data: plots data", sep="\n")
-    print(">Params: Print the enviroment parameters")
-    print(">Set clusters x: sets the ammount of clusters to x", \
-    ">Set population x: \
-    sets the number of individuals to x", ">Set selection x: Sets selection type to x", sep='\n')
-    print(">Set generations x: sets the number of generations to x", \
-    ">Set mutation x: sets mutation rate to x", sep='\n')
-    print(">init: initializes population", ">evolve: evolves the population", \
-    ">plot clusters: Prints data, now clustered", sep="\n")
-    print(">normalize: scales data to achieve zero mean and unit variance\
-     (use before loading data)", sep="\n")
-    print(">Compare: Plots comparison graph between the different selection methods", \
-    ">ignore lines x: skips x lines from the csv", sep="\n")
-    print(">ignore columns x: ignores the x last columns", \
-    ">quit: quits the program\033[0m", sep="\n")
-
-
-def init_pop(points, num_coord, num_genes, pop_size):
+def initialize_population(points, num_coord, num_genes, pop_size):
     '''Initializes population with random values for its genes'''
-    pop = []
-    mean = sum(points)/len(points)
-    aux = np.asarray([mean for _ in range(num_genes)])
+    population = []
+    mean = np.mean(points)
+    mean_array = mean * np.ones(num_genes)
+    
     for _ in range(pop_size):
-        pop.append(aux + np.random.normal(0, 2, list(aux.shape)))
-    return pop
+        new_individual = get_random_individual(mean_array)
+        population.append(new_individual)
+    
+    return population
+
+def get_random_individual(mean_array):
+    return mean_array + np.random.normal(0, 2, list(mean_array.shape))
 
 
 def crossover(ind1, ind2):
-    '''Mates two individuals'''
-    ret = deepcopy(ind1)
-    for pos, a in enumerate(ret):
-        closest = np.argmin([np.linalg.norm(a - b) for b in ind2])
-        ret[pos] = (a + ind2[closest])/2.0
-    return ret
+    '''Mates two individuals by combining their centers'''
+    child = deepcopy(ind1)
+    
+    for pos, center in enumerate(child):
+        closest_center = get_closest_center(ind2, center)
+        child[pos] = np.mean([center, ind2[closest_center]])
+    
+    return child
+
+def get_closest_center(individual, point):
+    return np.argmin([np.linalg.norm(point - center) for center in individual])
+
+
+def calculate_fitness(fitness, pop, points):
+    fitness_list = np.array([fitness(points, p) for p in pop])
+    pop[0], pop[np.argmax([fitness_list])] = pop[np.argmax([fitness_list])], pop[0]
+    ubermensch = deepcopy(pop[0]) #fittest individual
+    return ubermensch, fitness_list
 
 
 def elitism(fitness, pop, points, generations, mutation_rate, in_compare = 0):
-    '''Selection method: elitism'''
-    '''A new popoulation is generated by cloning the fittest individual and mutating it'''
+    '''Selection method: elitism
+    A new popoulation is generated by cloning the fittest individual and mutating it'''
     history = []
-    for i in range(generations):
-        fit = np.array([fitness(points, p) for p in pop])
-        pop[0], pop[np.argmax([fit])] = pop[np.argmax([fit])], pop[0]
-        ubermensch = deepcopy(pop[0]) #fittest individual
+    for i in tqdm(range(generations), ascii=True, desc="Generations"):
+        ubermensch, fitness_list = calculate_fitness(fitness, pop, points)
+        
+        
         if len(set(history[-8:])) == 1:
-            pop = [mutate(ubermensch, 5*mutation_rate) for _ in pop[1:]]
+            pop = [mutate(ubermensch, 5 * mutation_rate) for _ in pop[1:]]
         else:
             pop = [mutate(ubermensch, mutation_rate) for _ in pop[1:]]
 
         pop.append(ubermensch)
-        history.append(max(fit))
+        history.append(max(fitness_list))
 
         with open('graphs/log.txt', 'a') as log_file:
-            print("generation ", i, " fitness ", history[-1])
-            log_file.write("generation {} fitness {}\n".format(i, history[-1]))
+            print(f"generation {i} fitness {history[-1]}")
+            log_file.write(f"generation {i} fitness {history[-1]}\n")
 
     plot_clusters(points, ubermensch, "elitism", in_compare)
     return pop, ubermensch, history
@@ -110,10 +124,8 @@ def harem(fitness, pop, points, generations, mutation_rate, in_compare=0):
     Generates a new population by crossing the fittest individual with
     each member of the old generation and mutating them'''
     history = []
-    for i in range(generations):
-        fit = np.array([fitness(points, p) for p in pop])
-        pop[0], pop[np.argmax([fit])] = pop[np.argmax([fit])], pop[0]
-        ubermensch = deepcopy(pop[0]) #fittest individual
+    for i in tqdm(range(generations), ascii=True, desc="Generations"):
+        ubermensch, fitness_list = calculate_fitness(fitness, pop, points)
 
         if len(set(history[-8:])) == 1 :
             pop = [mutate(crossover(ubermensch, p), 5*mutation_rate) for p in pop[1:]]
@@ -121,7 +133,7 @@ def harem(fitness, pop, points, generations, mutation_rate, in_compare=0):
             pop = [mutate(crossover(ubermensch, p), mutation_rate) for p in pop[1:]]
 
         pop.append(ubermensch)
-        history.append(max(fit))
+        history.append(max(fitness_list))
         #Populate log with the fittest individual's info from each generation
         with open('graphs/log.txt', 'a') as log_file:
             print("generation ", i, " fitness ", history[-1])
@@ -136,15 +148,13 @@ def roulette(fitness, pop, points, generations, mutation_rate, in_compare = 0):
     Generates a new population by choosing two random idividuals whose
     pobability of being choosen is proportional to their fitness'''
     history = []
-    for i in range(generations):
+    for i in tqdm(range(generations), ascii=True, desc="Generations"):
         new_pop = []
-        fit = np.asarray([fitness(points, p) for p in pop])
-        pop[0], pop[np.argmax([fit])] = pop[np.argmax([fit])], pop[0]
-        ubermensch = deepcopy(pop[0]) #fittest individual
+        ubermensch, fitness_list = calculate_fitness(fitness, pop, points)
 
-        history.append(max(fit))
-        total_fit = sum(fit)
-        fit /= total_fit
+        history.append(max(fitness_list))
+        total_fit = sum(fitness_list)
+        fit = fitness_list/total_fit
 
         for _ in pop[1:]:
             selected = np.random.multinomial(2, fit)
@@ -173,24 +183,22 @@ def tournanment(fitness, pop, points, generations, mutation_rate, in_compare = 0
     Generates a new population by comparing two individuals and choosing
     the best, this is done twice and both winners mate'''
     history = []
-    for i in range(generations):
+    for i in tqdm(range(generations), ascii=True, desc="Generations"):
         new_pop = []
-        fit = np.array([fitness(points, p) for p in pop])
-        pop[0], pop[np.argmax([fit])] = pop[np.argmax([fit])], pop[0]
-        ubermensch = deepcopy(pop[0]) #fittest individual
+        ubermensch, fitness_list = calculate_fitness(fitness, pop, points)
 
         for _ in pop[1:]:
             id1 = np.random.randint(0, len(pop))
             id2 = np.random.randint(0, len(pop))
             contender1 = pop[id1]
             contender2 = pop[id2]
-            parent1 = contender1 if fit[id1] > fit[id2] else contender2
+            parent1 = contender1 if fitness_list[id1] > fitness_list[id2] else contender2
 
             id1 = np.random.randint(0, len(pop))
             id2 = np.random.randint(0, len(pop))
             contender1 = pop[id1]
             contender2 = pop[id2]
-            parent2 = contender1 if fit[id1] > fit[id2] else contender2
+            parent2 = contender1 if fitness_list[id1] > fitness_list[id2] else contender2
 
             if len(set(history[-8:])) == 1:
                 new_pop.append(mutate(crossover(parent1, parent2), 5*mutation_rate))
@@ -198,7 +206,7 @@ def tournanment(fitness, pop, points, generations, mutation_rate, in_compare = 0
                 new_pop.append(mutate(crossover(parent1, parent2), mutation_rate))
 
         new_pop.append(ubermensch)
-        history.append(max(fit))
+        history.append(max(fitness_list))
 
         with open('graphs/log.txt', 'a') as log_file:
             print("generation ", i, " fitness ", history[-1])
@@ -227,7 +235,7 @@ def compare(f, pop, points, generations, mutation_rate):
         log_file.write("-------harem-------\n")
 
     pop_ = deepcopy(pop)
-    pop_, centers, hist = harem(f, pop_, points, generations, mutation_rate, 1)
+    pop_, _, hist = harem(f, pop_, points, generations, mutation_rate, 1)
     history.append(hist)
 
     with open('graphs/log.txt', 'a') as log_file:
@@ -245,7 +253,7 @@ def compare(f, pop, points, generations, mutation_rate):
     pop_ = deepcopy(pop)
     pop_, centers, hist = tournanment(f, pop_, points, generations, mutation_rate, 1)
     history.append(hist)
-    #Plots each method in graph for better comparison
+    #Plots each method in graph for comparison
     plt.plot(range(len(history[0])), history[0], label='elitism')
     plt.plot(range(len(history[1])), history[1], label='harem')
     plt.plot(range(len(history[2])), history[2], label='roulette')
@@ -259,16 +267,9 @@ def compare(f, pop, points, generations, mutation_rate):
 
 def plot_clusters(points, centers, name, in_compare):
     '''Plots the points according to the given centers'''
-    clusters = [[] for c in centers]
-
-    for _, p in enumerate(points):
-        closest = np.argmin([np.linalg.norm(p - c) for c in centers])
-        clusters[closest].append(p)
-
-    for c in clusters:
-        x = [p[0] for p in c]
-        y = [p[1] for p in c]
-        plt.plot(x, y, 'o')
+    
+    clusters = get_clusters(points, centers)
+    plot_points(clusters)
 
     plt.savefig("graphs/" + name)
 
@@ -278,10 +279,247 @@ def plot_clusters(points, centers, name, in_compare):
 
     plt.gcf().clear()
 
+def get_clusters(points, individual):
+    clusters = [[] for center in individual]
 
-''' --------------------------------------------------- '''
-def main():
+    for _, point in enumerate(points):
+        closest = get_closest_center(individual, point)
+        clusters[closest].append(point)
+
+    return clusters
+
+def plot_points(clusters):
+    for cluster in clusters:
+        x = [point[0] for point in cluster]
+        y = [point[1] for point in cluster]
+        plt.plot(x, y, 'o')
+
+
+def drop_columns(data_frame, ignore_cols):
+    if type(data_frame) == type(None):
+        print("\033[91mThe columns will be ignored when the file is loaded")
+        return None, ignore_cols
+
+    num_coord = data_frame.shape[1]
+
+    if ignore_cols > num_coord:
+        print("\033[91mNumber of columns to ignore is greater \
+            than the total ammount of columns!")
+        return data_frame, 0
+
+    for i in range(ignore_cols):
+        data_frame.drop(data_frame.columns[num_coord - i - 1], axis=1, inplace=True)
+
+    return data_frame, ignore_cols
+
+def drop_rows(data_frame, ignore_rows):
+    if type(data_frame) == type(None):
+        print("\033[91mThe rows will be ignored when the file is loaded")
+        return data_frame
+    
+    num_points = data_frame.shape[0]
+
+    if ignore_rows > num_points:
+        print("\033[91mNumber of rows to ignore is greater \
+            than the total ammount of rows!")
+    else:
+        data_frame.drop(data_frame.index[:ignore_rows], inplace=True)
+    
+    return data_frame
+
+
+def initialize_option(data_frame, points, num_coord, num_genes, pop_size):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+        return None
+    else:
+        print("\033[91mPopulation initialized!")
+        return initialize_population(points, num_coord, num_genes, pop_size)
+
+
+def print_option(data_frame):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        print(data_frame)
+
+
+def normalize_option(std):
+    print("\033[91mDone!")
+    return not std
+
+
+def plot_data_option(data_frame, points):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        plot_points(points)
+        plt.show()
+
+
+def plot_clusters_option(data_frame, points, centers, selection):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        if len(centers) != 0:
+            plot_clusters(points, centers, selection, False)
+        else:
+            print("\033[91mData not cluseterized!")
+
+
+def ignore_rows_option(data_frame, inp, ignore_rows, std, points):
+    try:
+        ignore_rows = int(inp[13:])
+        data_frame = drop_rows(data_frame, ignore_rows)
+        print(ignore_rows, "lines will be ignored")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+    
+    if type(data_frame) == type(None):
+        num_points = 0
+    else:
+        num_points = data_frame.shape[0]
+        
+        if std:
+            points = preprocessing.scale(data_frame.values)
+        else:
+            points = data_frame.values
+
+    return data_frame, ignore_rows, num_points, points
+
+
+def ignore_columns_option(data_frame, inp, ignore_cols):
+    try:
+        ignore_cols = int(inp[15:])
+        data_frame, ignore_cols = drop_columns(data_frame, ignore_cols)
+        print(ignore_cols, "columns will be ignored")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+    
+    if type(data_frame) == type(None):
+        num_coord = 0
+    else:
+        num_coord = data_frame.shape[1]
+
+    return data_frame, ignore_cols, num_coord
+
+def set_k_option(inp, num_genes):
+    try:
+        num_genes = int(inp[5:])
+        print("number of clusters will be ", num_genes)
+        print("Remeber to call 'initialize' after changing variables")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+    
+    return num_genes
+        
+def set_population_option(inp, pop_size):
+    try:
+        pop_size = int(inp[14:])
+        print("New population size is", pop_size)
+        print("Remeber to call 'initialize' after changing variables")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+    
+    return pop_size
+
+def set_generations_option(inp, generations):
+    try:
+        generations = int(inp[15:])
+        print("New number of generations is", generations)
+        print("Remeber to call 'initialize' after changing variables")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+
+    return generations
+
+def set_mutation_option(inp, mutation_rate):
+    try:
+        mutation_rate = int(inp[12:])
+        print("New mutation rate is", mutation_rate)
+        print("Remeber to call 'initialize' after changing variables")
+    except ValueError:
+        print("\033[91mThat's not a number!")
+
+    return mutation_rate
+
+def set_selection_option(inp, evolve, selection):
+    if "harem" in inp:
+        evolve = harem
+        selection = "harem"
+    elif "elitism" in inp:
+        evolve = elitism
+        selection = "elitism"
+    elif "roulette" in inp:
+        evolve = roulette
+        selection = "roulette"
+    elif "tournanment" in inp:
+        evolve = tournanment
+        selection = "tournanment"
+    else:
+        print("This method does not exist!")
+        return evolve, selection
+    
+    print("Selection method set to", selection)
+    print("Remeber to call 'initialize' after changing variables")
+    return evolve, selection
+
+def evolve_option(data_frame, evolve, fitness_function, pop, points, generations, mutation_rate):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        return evolve(fitness_function, pop, points, generations, mutation_rate)
+
+
+def compare_option(data_frame, fitness_function, pop, points, generations, mutation_rate):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        compare(fitness_function, pop, points, generations, mutation_rate)
+
+def params_option(num_coord, num_points, num_genes, pop_size, generations, mutation_rate, selection, std):
+    print("Number of coordinates = ", num_coord)
+    print("Number of points = ", num_points)
+    print("Number of clusters = ", num_genes)
+    print("Population size = ", pop_size)
+    print("Number of generations = ", generations)
+    print("Mutation Rate = ", mutation_rate)
+    print("Selection Method = ", selection)
+    print("Scaled data = ", std)
+
+
+def help_option():
+    '''Prints help menu'''
+    print("\033[94m---------Darwin commands---------")
+    print(">Load [file]: loads data from [file]", ">Print data: prints loaded data", sep="\n")
+    print(">Plot data: plots data", ">Params: print the enviroment parameters", sep="\n")
+    print(">Set clusters x: sets the ammount of clusters to x", ">Set population x: sets the number of individuals to x", sep="\n")
+    print(">Set selection x: sets selection type to x")
+    print(">Set generations x: sets the number of generations to x", ">Set mutation x: sets mutation rate to x", sep="\n")
+    print(">Initialize: initializes population", ">Evolve: evolves the population", sep="\n")
+    print(">Plot clusters: prints data, now clustered")
+    print(">Normalize: scales data to achieve zero mean and unit variance (use before loading data)")
+    print(">Compare: plots comparison graph between the different selection methods")
+    print(">Ignore lines x: skips x lines from the csv", sep="\n")
+    print(">Ignore columns x: ignores the x last columns", ">Quit: quits the program\033[0m", sep="\n")
+
+
+def debug_option(data_frame):
+    if type(data_frame) == type(None):
+        print("\033[91mNo file loaded!")
+    else:
+        print(data_frame.shape)
+
+def configureGraphDirectory():
+    if not os.path.exists("graphs"):
+        os.makedirs("graphs")
+
+    open('graphs/log.txt', 'w').close() #cleaning log file
+
+
+def printWelcomeMessage():
     system("clear")
+    
     print("""\033[92m
      888                              d8b
      888                              Y8P
@@ -292,16 +530,18 @@ d88" 888    "88b 888P"  888  888  888 888 888 "88b
 Y88b 888888  888 888    Y88b 888 d88P 888 888  888
  "Y88888"Y888888 888     "Y8888888P"  888 888  888
                                                 """)
+    
     print("\033[93mWelcome to Darwin! The Genetic Clustering framework", "If you don't know what to do type help", sep='\n')
 
-    if not os.path.exists("graphs"):
-        os.makedirs("graphs")
 
-    open('graphs/log.txt', 'w').close() #cleaning log file
+''' --------------------------------------------------- '''
+def main():    
+    printWelcomeMessage()
+    configureGraphDirectory()
 
     filename = ""
-    f = calinskiHarabaz
-    df = None
+    fitness_function = calinskiHarabaz
+    data_frame = None
     points = []
     centers = []
     num_genes = 5
@@ -314,88 +554,108 @@ Y88b 888888  888 888    Y88b 888 d88P 888 888  888
     evolve = roulette
     selection = "roulette"
     ignore_rows = 0
-    ignore_coord = 0
+    ignore_cols = 0
     std = False
+    inp = ""
 
-    while(1):
+    while(inp != "quit"):
         print("\033[32mdarwin>>\033[96m", end=' ')
         inp = input()
+        inp = inp.lower()
 
         #initializes population
-        if inp.lower() == "init":
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                pop = init_pop(points, num_coord, num_genes, pop_size)
-
-        #quits framework
-        elif inp.lower() == "quit":
-            print("Quiting...")
-            break
+        if inp == "initialize":
+            pop = initialize_option(data_frame, points, num_coord, num_genes, pop_size)
 
         #prints data
-        elif inp.lower() == "print data":
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                print(df)
+        elif inp == "print data":
+            print_option(data_frame)
 
         #normalizes data
-        elif inp.lower() == 'normalize':
-            std = not std
+        elif inp == "normalize":
+            std = normalize_option(std)
 
-        #plots data or clusters
-        elif "plot" in inp.lower():
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                if "data" in inp.lower():
-                    plt.plot([p[0] for p in points], [p[1] for p in points], 'bo')
-                    plt.show()
-                else:
-                    if len(centers) != 0:
-                        plot_clusters(points, centers, selection, False)
-                    else:
-                        print("\033[91mData not cluseterized!")
+        #prints data
+        elif inp == "plot data":
+            plot_data_option(data_frame, points)
 
+        #prints clusters
+        elif inp == "plot clusters":
+            plot_clusters_option(data_frame, points, centers, selection)
+        
         #ignores lines
-        elif inp[0:12].lower() == "ignore lines":
-            ignore_rows = int(inp[13:])
-            print(ignore_rows, "lines will be ignored")
+        elif "ignore lines" in inp:
+            data_frame, ignore_rows, num_points, points = ignore_rows_option(data_frame, inp, ignore_rows, std, points)
 
         #ignores cloumns
-        elif inp[0:14].lower() == "ignore columns":
-            ignore_coord = int(inp[15:])
-            print(ignore_coord, "columns will be ignored")
+        elif "ignore columns" in inp:
+            data_frame, ignore_cols, num_coord = ignore_columns_option(data_frame, inp, ignore_cols)
 
-        #loads file
+        #sets number of clusters
+        elif "set k" in inp or "set clusters" in inp:
+            num_genes = set_k_option(inp, num_genes)
+
+        #sets population size
+        elif "set population" in inp:
+            pop_size = set_population_option(inp, pop_size)
+
+        #sets number of generations
+        elif "set generations" in inp:
+            generations = set_generations_option(inp, generations)
+
+        #setes mutation rate
+        elif "set mutation" in inp:
+            mutation_rate = set_mutation_option(inp, mutation_rate)
+        
+        #sets selection method
+        elif "set selection" in inp:
+            evolve, selection = set_selection_option(inp, evolve, selection)
+        
+        #wrong set
+        elif "set" in inp:
+            print("\033[91mCan't set that!")
+
+        #evolves with given paramethers
+        elif inp == "evolve":
+            pop, centers, _ = evolve_option(data_frame, evolve, fitness_function, pop, points, generations, mutation_rate)
+
+        #compares all the selection methods
+        elif inp == "compare":
+            compare_option(data_frame, fitness_function, pop, points, generations, mutation_rate)
+
+        #show paramethers
+        elif inp == "params":
+            params_option(num_coord, num_points, num_genes, pop_size, generations, mutation_rate, selection, std)
+
+        #show help menu
+        elif inp == "help":
+            help_option()
+
+        #prints shape of the loaded data
+        elif inp == "debug":
+            debug_option(data_frame)
+
+             #loads file
         elif inp[0:4].lower() == "load":
             filename = inp[5:]
             try:
-                df = pd.read_csv(filename, skiprows=ignore_rows, header=None)
-                num_coord = df.shape[1]
-                num_points = df.shape[0]
+                data_frame = pd.read_csv(filename, skiprows=ignore_rows, header=None)
+                num_coord = data_frame.shape[1]
+                num_points = data_frame.shape[0]
 
-                if ignore_coord > num_coord:
-                    ignore_coord = 0
-                    print("\033[91mNumber of columns to ignore is greater \
-                     than the total ammount of columns!")
-                    continue
+                data_frame, ignore_cols = drop_columns(data_frame, ignore_cols)
+                num_coord = data_frame.shape[1]
 
-                for i in range(ignore_coord):
-                    df.drop(df.columns[num_coord-i-1], axis=1, inplace=True)
-
-                num_coord = df.shape[1]
                 if std:
-                    points = preprocessing.scale(df.values)
+                    points = preprocessing.scale(data_frame.values)
                 else:
-                    points = df.values
+                    points = data_frame.values
 
                 ignore_rows = 0
-                ignore_coord = 0
+                ignore_cols = 0
 
-                print(df)
-                pop = init_pop(points, num_coord, num_genes, pop_size)
+                print(data_frame)
+                pop = initialize_population(points, num_coord, num_genes, pop_size)
                 print("loaded " + inp[5:])
             except FileNotFoundError:
                 print("\033[91mFile not found!")
@@ -412,89 +672,10 @@ Y88b 888888  888 888    Y88b 888 d88P 888 888  888
                 print("\033[91mThe header of your dataset is\
                  being considered part of the data. Use 'ignore lines'.")
 
-        #sets paramethers
-        elif inp[0:3].lower() == "set":
-            if "k" in inp or "clusters" in inp:
-                try:
-                    num_genes = int(inp[5:])
-                    print("number of clusters will be ", num_genes)
-                except ValueError:
-                    print("\033[91mThat's not a number!")
-            elif "population" in inp:
-                try:
-                    pop_size = int(inp[14:])
-                    print("New population size is", pop_size)
-                except ValueError:
-                    print("\033[91mThat's not a number!")
-            elif "generations" in inp:
-                try:
-                    generations = int(inp[15:])
-                    print("New number of generations is", generations)
-                except ValueError:
-                    print("\033[91mThat's not a number!")
-            elif "mutation" in inp:
-                try:
-                    mutation_rate = int(inp[12:])
-                    print("New mutation rate is", mutation_rate)
-                except ValueError:
-                    print("\033[91mThat's not a number!")
-            elif "selection" in inp.lower():
-                if "harem" in inp.lower():
-                    evolve = harem
-                    selection = "harem"
-                elif "elitism" in inp.lower():
-                    evolve = elitism
-                    selection = "elitism"
-                elif "roulette" in inp.lower():
-                    evolve = roulette
-                    selection = "roulette"
-                else:
-                    evolve = tournanment
-                    selection = "tournanment"
-                print("Selection method set to", selection)
-            else:
-                print("\033[91mCan't set that!")
-            print("Remeber to call init after changing variables")
-
-        #evolves with given paramethers
-        elif inp.lower() == "evolve":
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                pop, centers, history = evolve(f, pop, points, generations, mutation_rate)
-
-        #compares all the selection methods
-        elif inp.lower() == "compare":
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                compare(f, pop, points, generations, mutation_rate)
-
-        #show paramethers
-        elif inp.lower() == "params":
-            print("Number of coordinates = ", num_coord)
-            print("Number of points = ", num_points)
-            print("Number of clusters = ", num_genes)
-            print("Population size = ", pop_size)
-            print("Number of generations = ", generations)
-            print("Mutation Rate = ", mutation_rate)
-            print("Selection Method = ", selection)
-            print("Scaled data = ", std)
-
-        #show help menu
-        elif inp.lower() == "help":
-            helper()
-
-        #prints shape of the loaded data
-        elif inp.lower() == "debug":
-            if type(df) == type(None):
-                print("\033[91mNo file loaded!")
-            else:
-                print(df.shape)
-
-        else:
+        elif inp != "quit":
             print("\033[91mI don't understand you")
 
+    print("Quiting...")
 
 if __name__ == "__main__":
     main()
